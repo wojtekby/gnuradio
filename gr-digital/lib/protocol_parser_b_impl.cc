@@ -65,8 +65,10 @@ namespace gr {
 
       int count = 0;
       std::vector<pmt::pmt_t> info;
+      //printf("Protocol parser called with arguments: noutput_items: %d,   count:  \n", noutput_items, count);
+      if(noutput_items >= 128 ) { //TODO change magic number
       bool ret = d_format->parse(noutput_items, in, info, count);
-
+     // printf("Protocol parser B: %d \n", ret);
       if(ret) {
         for(size_t i = 0; i < info.size(); i++) {
           message_port_pub(d_out_port, info[i]);
@@ -75,7 +77,7 @@ namespace gr {
       else {
         message_port_pub(d_out_port, pmt::PMT_F);
       }
-
+      }
       return count;
     }
 

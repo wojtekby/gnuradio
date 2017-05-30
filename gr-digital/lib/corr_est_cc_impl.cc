@@ -24,7 +24,10 @@
 #include "config.h"
 #endif
 
+#include <iostream>
+#include <fstream>
 #include <gnuradio/io_signature.h>
+#include <stdio.h>
 #include <gnuradio/math.h>
 #include "corr_est_cc_impl.h"
 #include <volk/volk.h>
@@ -63,8 +66,12 @@ namespace gr {
       set_max_noutput_items(nitems);
       d_corr = (gr_complex *)
                volk_malloc(sizeof(gr_complex)*nitems, volk_get_alignment());
+      d_direct_correlation = (gr_complex *) volk_malloc(sizeof(gr_complex)*400, volk_get_alignment());
+
       d_corr_mag = (float *)
                    volk_malloc(sizeof(float)*nitems, volk_get_alignment());
+      d_direct_correlation_mag = (float *)
+                   volk_malloc(sizeof(float)*400, volk_get_alignment());
 
       // Create time-reversed conjugate of symbols
       d_symbols = symbols;
@@ -211,8 +218,8 @@ namespace gr {
                            gr_vector_void_star &output_items)
     {
       gr::thread::scoped_lock lock(d_setlock);
-
       const gr_complex *in = (gr_complex *)input_items[0];
+      gr_complex *in2 = (gr_complex *)input_items[0];
       gr_complex *out = (gr_complex*)output_items[0];
       gr_complex *corr;
       if (output_items.size() > 1)
@@ -225,7 +232,15 @@ namespace gr {
 
       // Calculate the correlation of the non-delayed input with the
       // known symbols.
-      d_filter->filter(noutput_items, &in[hist_len], corr);
+     // d_filter->filter(noutput_items, &in[hist_len], corr);
+     in2 -= hist_len;
+
+     d_filter->filter(noutput_items, &in2[0], corr, 0);
+      //printf("hist_len: %d \n", hist_len);
+	//printf("noutput_items: %d \n", noutput_items);
+
+
+
 
       // Find the magnitude squared of the correlation
       volk_32fc_magnitude_squared_32f(&d_corr_mag[0], corr, noutput_items);
@@ -236,25 +251,95 @@ namespace gr {
       }
       detection /= static_cast<float>(noutput_items);
       detection *= d_pfa;
-
+   //   printf("\nDetection: %f ", detection);
       int isps = (int)(d_sps + 0.5f);
       int i = 0;
+      int max_index=0;
+      int max_value=0;
+      // Find sample with maximum value
+
+      for(int k=0; k<noutput_items; k++){
+          if(d_corr_mag[k] > max_value){
+            max_index=k;
+            max_value=d_corr_mag[k];
+          }
+      }
+
+
+  //   printf("Corr_est max_index: %d", max_index);
+  //    printf("Corr_est max_value: %d \n", max_value);
       while(i < noutput_items) {
         // Look for the correlator output to cross the threshold.
         // Sum power over two consecutive symbols in case we're offset
         // in time. If off by 1/2 a symbol, the peak of any one point
         // is much lower.
         float corr_mag = d_corr_mag[i] + d_corr_mag[i+1];
-        if(corr_mag <= 4*detection) {
+        if(corr_mag <= 2*detection) {
+          //if(i==max_index) {
+	//	printf("Peak doesn't cross threshhold \n\n\n");
+          //      printf("Index:  %d, corr_mag:  %f,  detection:  %f \n\n\n", i, corr_mag, detection);
+//}
           i++;
+          	
           continue;
         }
 
+        
         // Go to (just past) the current correlator output peak
         while ((i < (noutput_items-1)) &&
-               (d_corr_mag[i] < d_corr_mag[i+1])) {
+        (d_corr_mag[i] < d_corr_mag[i+1])) {
           i++;
         }
+
+        if(i==max_index){ 
+
+        //calculate crosscorelation value for peak
+        //in2 -= 400;
+        //i += 384;
+        int foo = 800;
+        //gr_complex correlation[foo];
+	//double corelation[foo];
+        gr_complex * p1;
+       
+       //p1 = &in2[0];
+        in2 += i;
+         d_filter->filter(foo, &in2[0], d_direct_correlation, 1); 
+
+         volk_32fc_magnitude_squared_32f(&d_direct_correlation_mag[0], d_direct_correlation, foo);
+        //for(int i=0; i<foo; i++){
+         int magic_number = 363;
+        printf("Corr mag[363]: %f \n",i, d_direct_correlation_mag[magic_number]);
+        //printf("Corr mag[747]: %f \n",i, d_direct_correlation_mag[747]);
+
+        //}
+    //    delete[] p2;        
+/*
+        std::reverse(d_symbols.begin(), d_symbols.end());
+        for(int k=0; k<foo; k++)
+         {
+	        in2++;
+    	        for(size_t j = 0; j < d_symbols.size(); j++)
+		{
+		 correlation[k] += (*in2) * conj(d_symbols[j]);
+                 in2++;
+		}
+                 corelation[k] = abs(correlation[k]);
+                 in2 -= d_symbols.size();
+                //printf("symbols size: %d \n", d_symbols.size());
+                //printf("Correlation %d re: %f \n", k, corelation[k]);
+        }
+*/
+     
+	//int temp = i + 192;
+        //int temp2 = i + 2*192;
+       // int temp3 = i + 2*192;
+          int temp3 = i;
+
+       // temp2 = temp3;
+
+         //printf("\n Correlation re: %f, im:  %f  \n", correlation.real(),  correlation.imag());
+
+        
         // Delaying the primary signal output by the matched filter
         // length using history(), means that the the peak output of
         // the matched filter aligns with the start of the desired
@@ -262,8 +347,8 @@ namespace gr {
         // tag is not offset to another sample, so that downstream
         // data-aided blocks (like adaptive equalizers) know exactly
         // where the start of the correlated symbols are.
-        add_item_tag(0, nitems_written(0) + i, pmt::intern("corr_start"),
-                     pmt::from_double(d_corr_mag[i]), d_src_id);
+        add_item_tag(0, nitems_written(0) + temp3, pmt::intern("corr_start"),
+                     pmt::from_double(d_corr_mag[magic_number]), d_src_id);
 
 #if 0
         // Use Parabolic interpolation to estimate a fractional
@@ -282,9 +367,15 @@ namespace gr {
 #else
         // Calculates the center of mass between the three points around the peak.
         // Estimate is linear.
+       
         double nom = 0, den = 0;
         nom = d_corr_mag[i-1] + 2*d_corr_mag[i] + 3*d_corr_mag[i+1];
         den = d_corr_mag[i-1] + d_corr_mag[i] + d_corr_mag[i+1];
+
+ //       nom = d_direct_correlation_mag[magic_number-1] + 2*d_direct_correlation_mag[magic_number] 
+  //             + 3*d_direct_correlation_mag[magic_number+1];
+   //     den = d_direct_correlation_mag[magic_number-1] + d_direct_correlation_mag[magic_number] 
+  //            + d_direct_correlation_mag[magic_number+1];
         double center = nom / den;
         center = (center - 2.0); // adjust for bias in center of mass calculation
 #endif
@@ -313,34 +404,40 @@ namespace gr {
         // phase term, phi_bb(t-t_d), and a frequency dependent term
         // of the cross-correlation, which I don't believe maps simply
         // to expected symbol phase differences.
-        float phase = fast_atan2f(corr[i].imag(), corr[i].real());
+        float phase = fast_atan2f(d_direct_correlation[magic_number].imag(), d_direct_correlation[magic_number].real());
+        //float phase = fast_atan2f(correlation[1].imag(), correlation[1].real());
         int index = i + d_mark_delay;
+    //    printf("\n\n Corr_est d_mark_delay:  %d \n\n", d_mark_delay);
+     //   printf("Peak found at: %d \n\n", i);
+        //add_item_tag(0, nitems_written(0) + i, pmt::intern("begin"), pmt::from_double(1), d_src_id);
 
-        add_item_tag(0, nitems_written(0) + index, pmt::intern("phase_est"),
+        add_item_tag(0, nitems_written(0) + temp3, pmt::intern("phase_est"),
                      pmt::from_double(phase), d_src_id);
-        add_item_tag(0, nitems_written(0) + index, pmt::intern("time_est"),
+        add_item_tag(0, nitems_written(0) + temp3, pmt::intern("time_est"),
                      pmt::from_double(center), d_src_id);
         // N.B. the appropriate d_corr_mag[] index is "i", not "index".
-        add_item_tag(0, nitems_written(0) + index, pmt::intern("corr_est"),
+        add_item_tag(0, nitems_written(0) + temp3, pmt::intern("corr_est"),
                      pmt::from_double(d_corr_mag[i]), d_src_id);
-        add_item_tag(0, nitems_written(0) + index, pmt::intern("amp_est"),
+        add_item_tag(0, nitems_written(0) + temp3, pmt::intern("amp_est"),
                      pmt::from_double(d_scale), d_src_id);
-
+/*
         if (output_items.size() > 1) {
+           printf("\n\n Inside this stupid IF \n\n");
           // N.B. these debug tags are not offset to avoid walking off out buf
-          add_item_tag(1, nitems_written(0) + i, pmt::intern("phase_est"),
+          add_item_tag(1, nitems_written(0) + temp3, pmt::intern("phase_est"),
                        pmt::from_double(phase), d_src_id);
-          add_item_tag(1, nitems_written(0) + i, pmt::intern("time_est"),
+          add_item_tag(1, nitems_written(0) + temp3, pmt::intern("time_est"),
                        pmt::from_double(center), d_src_id);
-          add_item_tag(1, nitems_written(0) + i, pmt::intern("corr_est"),
+          add_item_tag(1, nitems_written(0) + temp3, pmt::intern("corr_est"),
                        pmt::from_double(d_corr_mag[i]), d_src_id);
-          add_item_tag(1, nitems_written(0) + i, pmt::intern("amp_est"),
+          add_item_tag(1, nitems_written(0) + temp3, pmt::intern("amp_est"),
                        pmt::from_double(d_scale), d_src_id);
-        }
-
+        } */
+	}
         // Skip ahead to the next potential symbol peak
         // (for non-offset/interleaved symbols)
-        i += isps;
+       // i += isps;
+            i++;
       }
 
       //if (output_items.size() > 1)

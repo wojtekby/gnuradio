@@ -42,6 +42,7 @@ namespace gr {
       size_t d_itemsize; //!< Bytes per item
       bool d_uses_trigger_tag; //!< If a trigger tag is used
       int d_state; //!< Current read state
+      int d_previous_state; // Previous state
       int d_curr_payload_len; //!< Length of the next payload (symbols)
       int d_curr_payload_offset; //!< Offset of the next payload (symbols)
       std::vector<pmt::pmt_t> d_payload_tag_keys; //!< Temporary buffer for PMTs that go on the payload (keys)

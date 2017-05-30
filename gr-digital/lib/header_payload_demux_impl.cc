@@ -251,6 +251,7 @@ namespace gr {
           consume_each(items_to_consume); \
           n_items_read += (items_to_consume); \
           in += (items_to_consume) * d_itemsize;
+      //printf("header_payload_demux_impl::general_work; state: %d \n", d_state);
       switch (d_state) {
         case STATE_WAIT_FOR_MSG:
           // In an ideal world, this would never be called
@@ -262,11 +263,13 @@ namespace gr {
           // Actions:
           // - Consume a single item to make sure we're not deleting any other
           //   info
+          printf("Inside STATE_HEADER_RX_FAIL \n");
           CONSUME_ITEMS(1);
           d_state = STATE_FIND_TRIGGER;
           break;
 
         case STATE_FIND_TRIGGER: {
+          //("Inside state_find_trigger \n\n");
           // Assumptions going into this state:
           // - No other state was active for this call to general_work()
           //   - i.e. n_items_read == 0
@@ -281,17 +284,20 @@ namespace gr {
               (input_items.size() == 2) ?
                   ((const unsigned char *) input_items[PORT_TRIGGER]) + n_items_read : NULL
           );
+         // printf("Trigger_offset: %d, max_rel_offset: %d \n", trigger_offset, max_rel_offset);
           if (trigger_offset < max_rel_offset) {
             d_state = STATE_HEADER;
           }
           // If we're using padding, don't consume everything, or we might
           // end up with not enough items before the trigger
           const int items_to_consume = trigger_offset - d_header_padding_total_items;
+          //printf("Items to consume: %d \n\n", items_to_consume);
           CONSUME_ITEMS(items_to_consume);
           break;
         } /* case STATE_FIND_TRIGGER */
 
         case STATE_HEADER:
+          printf("\n\nInside state_header \n");
           // Assumptions going into this state:
           // - The first items on `in' are the header samples (including padding)
           //   - So we can just copy from the beginning of `in'
@@ -315,11 +321,15 @@ namespace gr {
                 d_header_len+2*d_header_padding_symbols, // Number of symbols to copy
                 2*d_header_padding_items
             );
+            printf("d_header_len:   %d, Header SENT \n", d_header_len); 
+            //printf("\n\n\n d_header_padding_symbols:  %d \n\n\n", d_header_padding_symbols);
             d_state = STATE_WAIT_FOR_MSG;
           }
+          //printf("Buffers not ready !!!!!!!!!! \n");
           break;
 
         case STATE_HEADER_RX_SUCCESS:
+          printf("Inside STATE_HEADER_RX_SUCCESS \n");
           // Copy tags from header to payload
           for (size_t i = 0; i < d_payload_tag_keys.size(); i++) {
             add_item_tag(
@@ -337,15 +347,18 @@ namespace gr {
                             d_header_len * (d_items_per_symbol + d_gi)
                             + d_header_padding_total_items
                             + d_curr_payload_offset;
+            printf("Items tp consume: %d \n", items_to_consume);
             CONSUME_ITEMS(items_to_consume);
             d_curr_payload_offset = 0;
             d_state = STATE_PAYLOAD;
           }
-          break;
-
+          printf("State after HEADER_RX_SUCCESS: %d \n", d_state);
+          //break;
+          //fall into STATE_PAYLOAD
         case STATE_PAYLOAD:
           // Assumptions:
           // - Input buffer is in the right spot to just start copying
+          printf("Inside STATE_PAYLOAD\n");
           if (check_buffers_ready(
                 d_curr_payload_len,
                 0,
@@ -378,6 +391,7 @@ namespace gr {
         default:
           throw std::runtime_error("invalid state");
       } /* switch */
+      //d_previous_state = d_state;
 
       return WORK_CALLED_PRODUCE;
     } /* general_work() */
@@ -426,16 +440,19 @@ namespace gr {
     void
     header_payload_demux_impl::parse_header_data_msg(pmt::pmt_t header_data)
     {
+      printf("Inside parse_header_data_msg \n");
       d_payload_tag_keys.clear();
       d_payload_tag_values.clear();
       d_state = STATE_HEADER_RX_FAIL;
 
       if (pmt::is_integer(header_data)) {
+        //printf("Inside pmt::is_integer(header_data) \n");
         d_curr_payload_len = pmt::to_long(header_data);
         d_payload_tag_keys.push_back(d_len_tag_key);
         d_payload_tag_values.push_back(header_data);
         d_state = STATE_HEADER_RX_SUCCESS;
       } else if (pmt::is_dict(header_data)) {
+        //printf("Inside pmt::is_dict(header_data) \n");
         pmt::pmt_t dict_items(pmt::dict_items(header_data));
         while (!pmt::is_null(dict_items)) {
           pmt::pmt_t this_item(pmt::car(dict_items));
@@ -443,12 +460,13 @@ namespace gr {
           d_payload_tag_values.push_back(pmt::cdr(this_item));
           if (pmt::equal(pmt::car(this_item), d_len_tag_key)) {
             d_curr_payload_len = pmt::to_long(pmt::cdr(this_item));
+             //printf(" d_state = STATE_HEADER_RX_SUCCESS;\n");
             d_state = STATE_HEADER_RX_SUCCESS;
-          }
+          } 
           if (pmt::equal(pmt::car(this_item), d_payload_offset_key)) {
             d_curr_payload_offset = pmt::to_long(pmt::cdr(this_item));
             if (std::abs(d_curr_payload_offset) > d_header_padding_total_items) {
-              GR_LOG_CRIT(d_logger, "Payload offset exceeds padding");
+              GR_LOG_CRIT(d_logger, "Payload offset exceeds padding");         
               d_state = STATE_HEADER_RX_FAIL;
               return;
             }
@@ -459,7 +477,12 @@ namespace gr {
           GR_LOG_CRIT(d_logger, "no payload length passed from header data");
         }
       } else if (header_data == pmt::PMT_F || pmt::is_null(header_data)) {
-        GR_LOG_INFO(d_logger, boost::format("Parser returned %1%") % pmt::write_string(header_data));
+        //printf("\n\n FOUND \n\n");
+       // if(d_state!=STATE_HEADER_RX_SUCCESS)
+        //if(d_previous_state == STATE_HEADER_RX_SUCCESS) d_state = d_previous_state;
+        //printf("d_previous_state: %d \n", d_previous_state);
+        GR_LOG_INFO(d_logger, boost::format("HELLO  Parser returned %1%") % pmt::write_string(header_data));
+        
       } else {
         GR_LOG_ALERT(d_logger, boost::format("Received illegal header data (%1%)") % pmt::write_string(header_data));
       }
@@ -477,6 +500,8 @@ namespace gr {
           set_min_noutput_items(d_curr_payload_len * (d_output_symbols ? 1 : d_items_per_symbol));
         }
       }
+    printf("d_state after trigger: %d \n", d_state);
+    d_previous_state = d_state;
     } /* parse_header_data_msg() */
 
 

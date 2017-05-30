@@ -23,6 +23,7 @@
 #include "config.h"
 #endif
 
+#include <stdio.h>
 #include <iostream>
 #include <iomanip>
 #include <string.h>
@@ -63,13 +64,16 @@ namespace gr {
     {
       uint8_t* bytes_out = (uint8_t*)volk_malloc(header_nbytes(),
                                                  volk_get_alignment());
-
+      //printf("Header format: nbytes_in: %d", nbytes_in);
       header_buffer header(bytes_out);
       header.add_field64(d_access_code, d_access_code_len);
+      header.add_field64(d_access_code, d_access_code_len);
+      //printf("Header format: access_code: %l \n", (double)d_access_code);
       header.add_field16((uint16_t)(nbytes_in));
       header.add_field16((uint16_t)(nbytes_in));
       header.add_field16((uint16_t)(d_bps));
       header.add_field16((uint16_t)(d_counter));
+      
 
       // Package output data into a PMT vector
       output = pmt::init_u8vector(header_nbytes(), bytes_out);
@@ -85,7 +89,7 @@ namespace gr {
     size_t
     header_format_counter::header_nbits() const
     {
-      return d_access_code_len + 8*4*sizeof(uint16_t);
+      return 2*d_access_code_len + 8*4*sizeof(uint16_t);
     }
 
     bool
@@ -100,13 +104,17 @@ namespace gr {
     int
     header_format_counter::header_payload()
     {
+
+      //if(header_ok()) printf("Header seems to be ok \n");
       uint16_t len = d_hdr_reg.extract_field16(0);
       uint16_t bps = d_hdr_reg.extract_field16(32);
       uint16_t counter = d_hdr_reg.extract_field16(48);
-
+      printf("header_format_counter; len: %d,  bps: %d  , counter: %d \n", len, bps, counter);
+     // printf("payload symbols: %d \n", 8*len / d_bps);
       d_bps = bps;
 
       d_info = pmt::make_dict();
+
       d_info = pmt::dict_add(d_info, pmt::intern("payload symbols"),
                              pmt::from_long(8*len / d_bps));
       d_info = pmt::dict_add(d_info, pmt::intern("bps"),

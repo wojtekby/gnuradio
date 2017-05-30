@@ -28,6 +28,7 @@
 #include <volk/volk.h>
 #include <iostream>
 #include <cstring>
+#include <stdio.h>
 
 namespace gr {
   namespace filter {
@@ -196,7 +197,8 @@ namespace gr {
 				     const std::vector<gr_complex> &taps,
 				     int nthreads)
 	: d_fftsize(-1), d_decimation(decimation), d_fwdfft(NULL),
-	  d_invfft(NULL), d_nthreads(nthreads), d_xformed_taps(NULL)
+	  d_invfft(NULL), d_nthreads(nthreads), d_xformed_taps(NULL),
+          d_last_value(0)
       {
 	set_taps(taps);
       }
@@ -302,11 +304,18 @@ namespace gr {
       }
 
       int
-      fft_filter_ccc::filter(int nitems, const gr_complex *input, gr_complex *output)
+      fft_filter_ccc::filter(int nitems, const gr_complex *input, gr_complex *output, int type)
       {
-	int dec_ctr = 0;
+
+      if(type==1){
 	int j = 0;
+	int dec_ctr = 0;
+	
 	int ninput_items = nitems * d_decimation;
+	/* printf("FFT filter, d_decimation: %d \n", d_decimation);
+          printf("FFT filter, nitems: %d \n", nitems);
+	printf("FFT filter, d_nsamples: %d \n", d_nsamples);
+	printf("FFT filter, tailsize(): %d \n", tailsize()); */
 
 	for(int i = 0; i < ninput_items; i += d_nsamples) {
 	  memcpy(d_fwdfft->get_inbuf(), &input[i], d_nsamples * sizeof(gr_complex));
@@ -336,13 +345,75 @@ namespace gr {
 	    j += d_decimation;
 	  }
 	  dec_ctr = (j - d_nsamples);
-
+	 
 	  // stash the tail
 	  memcpy(&d_tail[0], d_invfft->get_outbuf() + d_nsamples,
 		 tailsize() * sizeof(gr_complex));
 	}
 
 	return nitems;
+      }
+	
+
+      else if(type==0){ 
+	int L = 384;
+	gr_complex temp, diff;
+	int ninput_items = nitems * d_decimation;
+    	//printf("d_last_value: %f,  %f \n", d_last_value.real(), d_last_value.imag());
+        temp = d_last_value;
+	*output = temp;
+	output++;
+	for(int i=1; i<ninput_items; i++)
+	{
+		temp += conj( input[i+L-1] ) * input[i+2*L-1] - conj(input[i-1])*input[i+L-1];
+		*output = temp;
+		output++;
+	}
+        diff = temp - d_last_value;
+        diff.real() *= 0.6f;
+        diff.imag() *= 0.6f;  
+        d_last_value = temp - diff;
+
+	return nitems;
+      }
+	
+/* int j = 0;
+        int L = 32;
+	gr_complex *a;
+	gr_complex received[nitems];
+	gr_complex *b;
+	gr_complex *c;
+	//a = input;
+	//b = input;
+	//c = input;
+	b += L;
+	c += 2*L;
+	gr_complex temp;
+        gr_complex *temp2;
+
+
+ 	while(j < d_nsamples - 2*L) {
+	   // *output = 1;
+	    //*output = *temp + conj(*b)*(*c) - conj(*a)*(*b);
+		//for (int i=0; i<L; i++)
+		//{
+			temp += conj( input[j+L] ) * input[j+2*L] - conj(input[j])*input[j+L];
+			
+			//temp += 0.01;
+		//}
+	   //*temp = *output;
+		*output = temp;
+	    j += d_decimation;
+	    output++;
+
+	  }
+	for(int i=1; i< 2*L; i++) {
+		*output = temp;
+		output++;
+	}
+   	return nitems;
+
+*/
       }
 
 

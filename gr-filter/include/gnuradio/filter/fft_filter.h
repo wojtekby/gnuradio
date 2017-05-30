@@ -77,6 +77,7 @@ namespace gr {
 	std::vector<float>       d_tail;	    // state carried between blocks for overlap-add
 	std::vector<float>       d_taps;            // stores time domain taps
 	gr_complex              *d_xformed_taps;    // Fourier xformed taps
+        
 
 	void compute_sizes(int ntaps);
 	int tailsize() const { return d_ntaps - 1; }
@@ -182,7 +183,7 @@ namespace gr {
 	std::vector<gr_complex>  d_tail;	    // state carried between blocks for overlap-add
 	std::vector<gr_complex>  d_taps;            // stores time domain taps
 	gr_complex              *d_xformed_taps;    // Fourier xformed taps
-
+        gr_complex               d_last_value;
 	void compute_sizes(int ntaps);
 	int tailsize() const { return d_ntaps - 1; }
 
@@ -238,7 +239,7 @@ namespace gr {
 	 * \param input   The input vector to be filtered
 	 * \param output  The result of the filter operation
 	 */
-	int filter(int nitems, const gr_complex *input, gr_complex *output);
+	int filter(int nitems, const gr_complex *input, gr_complex *output, int type=1);
       };
 
 

@@ -24,6 +24,8 @@
 #endif
 
 #include <iostream>
+#include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 #include <volk/volk.h>
 #include <gnuradio/digital/header_format_default.h>
@@ -110,6 +112,8 @@ namespace gr {
 
       header_buffer header(bytes_out);
       header.add_field64(d_access_code, d_access_code_len);
+      //header.add_field64(d_access_code, d_access_code_len);
+      //printf("%d Header format: d_access_code: %d, d_access_code_len: %d, d_nbytes_in: %d", d_access_code, d_access_code_len, nbytes_in);
       header.add_field16((uint16_t)(nbytes_in));
       header.add_field16((uint16_t)(nbytes_in));
 
@@ -129,10 +133,15 @@ namespace gr {
                                  int &nbits_processed)
     {
       nbits_processed = 0;
+      printf("Inside header_format_default::parse \n");
+      //printf("Header nbits_in: %d \n", nbits_in);
+      //printf("Header nbits_processed: %d \n", nbits_processed);
 
       while(nbits_processed < nbits_in) {
+        if(d_state==STATE_HAVE_SYNC) printf("First header decoded \n");
         switch(d_state) {
 	case STATE_SYNC_SEARCH:    // Look for the access code correlation
+        printf("STATE_SYNC_SEARCH \n"); 
 	  while(nbits_processed < nbits_in) {
             // shift in new data
             d_data_reg = (d_data_reg << 1) | ((input[nbits_processed++]) & 0x1);
@@ -144,6 +153,10 @@ namespace gr {
             wrong_bits = (d_data_reg ^ d_access_code) & d_mask;
             volk_64u_popcnt(&nwrong, wrong_bits);
 
+     //       printf("Header wrong_bits: %" PRIu64  " \n", wrong_bits);
+    //        std::cout << "Header wrong_bits: " << wrong_bits << "\n";
+       //     printf("Header d_threshold: %d \n", d_threshold);  
+
             if(nwrong <= d_threshold) {
               enter_have_sync();
               break;
@@ -152,14 +165,18 @@ namespace gr {
           break;
 
 	case STATE_HAVE_SYNC:
+         printf("STATE_HAVE_SYNC \n"); 
+        // printf("header.bits():  %d, d_access_code_len:  %d \n", header_nbits(), d_access_code_len);
 	  while(nbits_processed <= nbits_in) {    // Shift bits one at a time into header
             d_hdr_reg.insert_bit(input[nbits_processed++]);
-            if(d_hdr_reg.length() == (header_nbits()-d_access_code_len)) {
-
+            //if(d_hdr_reg.length() == (header_nbits()-d_access_code_len)) {
+              if(d_hdr_reg.length() == 64) {
 	      // we have a full header, check to see if it has been received properly
 	      if(header_ok()) {
+                //printf("HEADER OK \n");
                 int payload_len = header_payload();
 		enter_have_header(payload_len);
+               // printf("Header payload len: %d \n", payload_len);
                 info.push_back(d_info);
                 return true;
               }
@@ -180,7 +197,7 @@ namespace gr {
     size_t
     header_format_default::header_nbits() const
     {
-      return d_access_code_len + 8*2*sizeof(uint16_t);
+      return 2*d_access_code_len + 8*2*sizeof(uint16_t);
     }
 
     inline void

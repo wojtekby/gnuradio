@@ -42,7 +42,9 @@ namespace gr {
       kernel::fft_filter_ccc *d_filter;
 
       gr_complex *d_corr;
+      gr_complex *d_direct_correlation;
       float *d_corr_mag;
+      float *d_direct_correlation_mag;
 
       float d_scale;
       float d_pfa; // probability of false alarm
